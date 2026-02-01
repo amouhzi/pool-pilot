@@ -21,10 +21,10 @@ composer install
 
 To run the application, use the `bin/console` script. The following commands are available:
 
-*   `app:create`: Creates a new system user, directory, and PHP-FPM pool with auto-detected PHP version.
+*   `app:create`: Creates a new system user, directory, PHP-FPM pool, and Nginx site with auto-detected PHP version.
 
 ```bash
-php bin/console app:create my-app
+php bin/console app:create my-app my-app.com
 ```
 
 ## Contributing

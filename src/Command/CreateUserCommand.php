@@ -14,7 +14,7 @@ use Symfony\Component\Process\Process;
 
 #[AsCommand(
     name: 'app:create',
-    description: 'Creates a new system user, directory, and PHP-FPM pool with auto-detected PHP version.',
+    description: 'Creates a new system user, directory, PHP-FPM pool, and Nginx site with auto-detected PHP version.',
 )]
 final class CreateUserCommand extends Command
 {
@@ -25,12 +25,15 @@ final class CreateUserCommand extends Command
 
     protected function configure(): void
     {
-        $this->addArgument('name', InputArgument::REQUIRED, 'The name of the application');
+        $this
+            ->addArgument('name', InputArgument::REQUIRED, 'The name of the application')
+            ->addArgument('domain', InputArgument::REQUIRED, 'The domain name for the application');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $appName = $input->getArgument('name');
+        $domain = $input->getArgument('domain');
         $filesystem = new Filesystem();
 
         // Detect current PHP version (e.g., "8.2")
@@ -65,7 +68,6 @@ final class CreateUserCommand extends Command
             throw new \RuntimeException("Could not read template file '$templatePath'.");
         }
 
-        // Use regex to replace key directives, assuming www-data is the user/group in www.conf
         $replacements = [
             '/^\[www\]/m' => "[$appName]",
             '/^user\s*=\s*www-data/m' => "user = $appName",
@@ -75,7 +77,6 @@ final class CreateUserCommand extends Command
 
         $poolConfig = preg_replace(array_keys($replacements), array_values($replacements), $poolConfig, 1);
 
-        // Ensure listen ownership is set for socket access by the web server
         if (!str_contains($poolConfig, 'listen.owner')) {
             $poolConfig .= "\nlisten.owner = www-data";
         }
@@ -87,7 +88,19 @@ final class CreateUserCommand extends Command
         $filesystem->dumpFile($poolPath, $poolConfig);
         $output->writeln("<info>Pool configuration created at $poolPath using www.conf as a template.</info>");
 
-        // 4. Restart PHP-FPM Service
+        // 4. Generate Nginx Server Block
+        $output->writeln("<info>Generating Nginx server block...</info>");
+        $nginxConfig = $this->generateNginxConfig($appName, $phpVersion, $domain);
+        $nginxPath = "/etc/nginx/sites-available/$appName";
+        $filesystem->dumpFile($nginxPath, $nginxConfig);
+        $output->writeln("<info>Nginx configuration created at $nginxPath</info>");
+
+        // 5. Enable Nginx Site and Reload
+        $this->enableNginxSite($appName, $filesystem, $output);
+        $this->runProcess(['systemctl', 'reload', 'nginx'], $output);
+        $output->writeln("<info>Nginx site enabled and reloaded.</info>");
+
+        // 6. Restart PHP-FPM Service
         $output->writeln("<info>Restarting PHP-FPM service...</info>");
         $serviceName = "php$phpVersion-fpm";
         $this->runProcess(['systemctl', 'restart', $serviceName], $output);
@@ -114,5 +127,48 @@ final class CreateUserCommand extends Command
         $process->run();
 
         return $process->isSuccessful();
+    }
+
+    private function generateNginxConfig(string $appName, string $phpVersion, string $domain): string
+    {
+        $webDir = "/var/www/$appName/public";
+        $socketPath = "/run/php/php$phpVersion-fpm-$appName.sock";
+
+        return <<<EOT
+            server {
+                listen 80;
+                server_name $domain;
+                root $webDir;
+
+                index index.php index.html;
+
+                location / {
+                    try_files \$uri \$uri/ /index.php?\$query_string;
+                }
+
+                location ~ \.php$ {
+                    include snippets/fastcgi-php.conf;
+                    fastcgi_pass unix:$socketPath;
+                }
+
+                location ~ /\.ht {
+                    deny all;
+                }
+            }
+            EOT;
+    }
+
+    private function enableNginxSite(string $appName, Filesystem $filesystem, OutputInterface $output): void
+    {
+        $availableSite = "/etc/nginx/sites-available/$appName";
+        $enabledSite = "/etc/nginx/sites-enabled/$appName";
+
+        if ($filesystem->exists($enabledSite)) {
+            $output->writeln("<comment>Nginx site '$appName' is already enabled. Skipping.</comment>");
+            return;
+        }
+
+        $filesystem->symlink($availableSite, $enabledSite);
+        $output->writeln("<info>Nginx site enabled for '$appName'.</info>");
     }
 }
