@@ -48,7 +48,7 @@ final class CreateAppCommand extends Command
             $io->writeln("<comment>User '$appName' already exists. Skipping.</comment>");
         } else {
             $io->write("<info>Creating system user '$appName'...</info>");
-            $this->runProcess(['useradd', '-m', '-s', '/bin/false', $appName]);
+            $this->runProcess(['useradd', '-m', '-s', '/bin/sh', $appName]);
             $io->writeln(" <info>[OK]</info>");
         }
 
