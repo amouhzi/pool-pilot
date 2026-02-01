@@ -50,17 +50,17 @@ final class CreateAppCommand extends Command
             $output->writeln(" <info>[OK]</info>");
         }
 
-        $webDir = "/var/www/$appName/public";
-        $output->write("<info>Creating directory $webDir...</info>");
-        $this->runProcess(['mkdir', '-p', $webDir]);
+        $baseDir = "/var/www/$appName";
+        $output->write("<info>Creating base directory $baseDir...</info>");
+        $this->runProcess(['mkdir', '-p', $baseDir]);
         $output->writeln(" <info>[OK]</info>");
 
         $output->write("<info>Setting directory ownership...</info>");
-        $this->runProcess(['chown', '-R', "$appName:$appName", "/var/www/$appName"]);
+        $this->runProcess(['chown', '-R', "$appName:$appName", $baseDir]);
         $output->writeln(" <info>[OK]</info>");
 
         $output->write("<info>Setting directory permissions...</info>");
-        $this->runProcess(['chmod', '-R', '755', "/var/www/$appName"]);
+        $this->runProcess(['chmod', '-R', '755', $baseDir]);
         $output->writeln(" <info>[OK]</info>");
 
         $templatePath = "/etc/php/$phpVersion/fpm/pool.d/www.conf";
@@ -105,6 +105,7 @@ final class CreateAppCommand extends Command
         $output->writeln(" <info>[OK]</info>");
 
         $output->writeln("\n<success>Application setup complete for $domain.</success>");
+        $output->writeln("<comment>Note: Your Nginx document root is set to $baseDir/htdocs. Please place your public files there.</comment>");
 
         return Command::SUCCESS;
     }
@@ -137,7 +138,7 @@ final class CreateAppCommand extends Command
 
     private function generateNginxConfig(string $appName, string $phpVersion, string $domain): string
     {
-        $webDir = "/var/www/$appName/public";
+        $webDir = "/var/www/$appName/htdocs";
         $socketPath = "/run/php/php$phpVersion-fpm-$appName.sock";
 
         return <<<EOT
