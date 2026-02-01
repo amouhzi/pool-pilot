@@ -52,6 +52,8 @@ final class CreateAppCommand extends Command
             $io->writeln(" <info>[OK]</info>");
         }
 
+        $this->setupSshKeys($appName, $io);
+
         $baseDir = "/var/www/$appName";
         $io->write("<info>Creating base directory $baseDir...</info>");
         $this->runProcess(['mkdir', '-p', $baseDir]);
@@ -149,7 +151,6 @@ final class CreateAppCommand extends Command
                 root $webDir;
 
                 location / {
-                    # try to serve file directly, fallback to index.php
                     try_files \$uri /index.php\$is_args\$args;
                 }
 
@@ -157,21 +158,11 @@ final class CreateAppCommand extends Command
                     fastcgi_pass unix:$socketPath;
                     fastcgi_split_path_info ^(.+\.php)(/.*)$;
                     include fastcgi_params;
-
-                    # When you are using symlinks to link the document root to the
-                    # current version of your application, you should pass the real
-                    # application path instead of the path to the symlink to PHP
-                    # FPM.
                     fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;
                     fastcgi_param DOCUMENT_ROOT \$realpath_root;
-                    # Prevents URIs that include the front controller. This will 404:
-                    # http://example.com/index.php/some-path
-                    # Remove the internal directive to allow URIs like this
                     internal;
                 }
 
-                # return 404 for all other php files not matching the front controller
-                # this prevents access to other php files you don't want to be accessible.
                 location ~ \.php$ {
                     return 404;
                 }
@@ -182,18 +173,65 @@ final class CreateAppCommand extends Command
             EOT;
     }
 
-    private function enableNginxSite(string $appName, Filesystem $filesystem, OutputInterface $output): void
+    private function enableNginxSite(string $appName, Filesystem $filesystem, SymfonyStyle $io): void
     {
         $availableSite = "/etc/nginx/sites-available/$appName";
         $enabledSite = "/etc/nginx/sites-enabled/$appName";
 
         if ($filesystem->exists($enabledSite)) {
-            $output->writeln("<comment>Nginx site '$appName' is already enabled. Skipping.</comment>");
+            $io->writeln("<comment>Nginx site '$appName' is already enabled. Skipping.</comment>");
             return;
         }
 
-        $output->write("<info>Enabling Nginx site (creating symlink)...</info>");
+        $io->write("<info>Enabling Nginx site (creating symlink)...</info>");
         $this->runProcess(['ln', '-s', $availableSite, $enabledSite]);
-        $output->writeln(" <info>[OK]</info>");
+        $io->writeln(" <info>[OK]</info>");
+    }
+
+    private function setupSshKeys(string $appName, SymfonyStyle $io): void
+    {
+        $homeDir = $this->getInvokingUserHomeDir();
+        if ($homeDir === null) {
+            $io->warning("Could not determine home directory of invoking user. Skipping SSH key setup.");
+            return;
+        }
+
+        $authorizedKeysFile = "$homeDir/.ssh/authorized_keys";
+        if (!file_exists($authorizedKeysFile)) {
+            $io->note("No SSH authorized keys found at '$authorizedKeysFile'. Skipping.");
+            return;
+        }
+
+        $keys = file_get_contents($authorizedKeysFile);
+        if ($keys === false) {
+            $io->warning("Could not read authorized keys from '$authorizedKeysFile'. Skipping.");
+            return;
+        }
+
+        $io->write("<info>Copying SSH authorized keys...</info>");
+
+        $newUserHomeDir = "/home/$appName";
+        $newUserSshDir = "$newUserHomeDir/.ssh";
+        $newUserAuthorizedKeys = "$newUserSshDir/authorized_keys";
+
+        $this->runProcess(['mkdir', '-p', $newUserSshDir]);
+        $this->runProcess(['tee', $newUserAuthorizedKeys], $keys);
+        $this->runProcess(['chmod', '700', $newUserSshDir]);
+        $this->runProcess(['chmod', '600', $newUserAuthorizedKeys]);
+        $this->runProcess(['chown', '-R', "$appName:$appName", $newUserSshDir]);
+
+        $io->writeln(" <info>[OK]</info>");
+    }
+
+    private function getInvokingUserHomeDir(): ?string
+    {
+        $user = $_SERVER['SUDO_USER'] ?? null;
+        if ($user !== null) {
+            $userInfo = posix_getpwnam($user);
+            return $userInfo['dir'] ?? null;
+        }
+
+        $userInfo = posix_getpwuid(posix_getuid());
+        return $userInfo['dir'] ?? null;
     }
 }

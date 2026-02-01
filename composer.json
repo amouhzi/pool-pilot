@@ -10,13 +10,13 @@
         "php": ">=8.2",
         "ext-ctype": "*",
         "ext-iconv": "*",
+        "ext-posix": "*",
         "symfony/config": "7.4.*",
         "symfony/console": "7.4.*",
         "symfony/dependency-injection": "7.4.*",
         "symfony/filesystem": "7.4.*",
         "symfony/process": "7.4.*"
     },
-    "require-dev": {},
     "config": {
         "allow-plugins": {
             "php-http/discovery": true
