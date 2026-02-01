@@ -3,16 +3,13 @@
 
 declare(strict_types=1);
 
+use App\Command\CreateAppCommand;
 use Symfony\Component\Console\Application;
-use Symfony\Component\Console\Command\Command;
-use Symfony\Component\DependencyInjection\ContainerBuilder;
 
 // Look for the autoloader in a few possible locations
 $autoloaderPaths = [
-    // Local development
-    __DIR__ . '/../vendor/autoload.php',
-    // Installed as a Composer dependency
-    __DIR__ . '/../../../autoload.php',
+    __DIR__ . '/../vendor/autoload.php', // Local development
+    __DIR__ . '/../../../autoload.php', // Installed as a Composer dependency
 ];
 
 $autoloaderFound = false;
@@ -30,42 +27,9 @@ if (!$autoloaderFound) {
 }
 
 try {
-    $container = new ContainerBuilder();
-
-    // Register commands with autowiring and autoconfiguration
-    $container->registerForAutoconfiguration(Command::class)
-        ->addTag('console.command');
-
-    $commandDirectory = dirname(__DIR__).'/src/Command';
-    $namespace = 'App\\Command\\';
-
-    if (is_dir($commandDirectory)) {
-        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($commandDirectory, FilesystemIterator::SKIP_DOTS));
-        $phpFiles = new RegexIterator($iterator, '/\.php$/');
-
-        foreach ($phpFiles as $phpFile) {
-            $className = $namespace . $phpFile->getBasename('.php');
-            if (class_exists($className) && is_subclass_of($className, Command::class)) {
-                $container->register($className, $className)
-                    ->setAutowired(true)
-                    ->setAutoconfigured(true);
-            }
-        }
-    }
-
-    $container->compile();
-
-    $commands = [];
-    foreach ($container->findTaggedServiceIds('console.command') as $serviceId => $tags) {
-        /** @var Command $command */
-        $commands[] = $container->get($serviceId);
-    }
-
     $application = new Application('PoolPilot');
-    $application->addCommands($commands);
+    $application->addCommand(new CreateAppCommand());
 
-
-    // The run() method returns the exit code
     exit($application->run());
 
 } catch (Throwable $e) {
