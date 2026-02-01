@@ -9,6 +9,7 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\Process\Process;
 
@@ -35,33 +36,34 @@ final class CreateAppCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        $io = new SymfonyStyle($input, $output);
         $appName = $input->getArgument('name');
         $domain = $input->getArgument('domain');
         $filesystem = new Filesystem();
 
         $phpVersion = PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION;
-        $output->writeln("<info>Detected PHP version: $phpVersion</info>");
+        $io->writeln("<info>Detected PHP version: $phpVersion</info>");
 
         if ($this->userExists($appName)) {
-            $output->writeln("<comment>User '$appName' already exists. Skipping.</comment>");
+            $io->writeln("<comment>User '$appName' already exists. Skipping.</comment>");
         } else {
-            $output->write("<info>Creating system user '$appName'...</info>");
+            $io->write("<info>Creating system user '$appName'...</info>");
             $this->runProcess(['useradd', '-m', '-s', '/bin/false', $appName]);
-            $output->writeln(" <info>[OK]</info>");
+            $io->writeln(" <info>[OK]</info>");
         }
 
         $baseDir = "/var/www/$appName";
-        $output->write("<info>Creating base directory $baseDir...</info>");
+        $io->write("<info>Creating base directory $baseDir...</info>");
         $this->runProcess(['mkdir', '-p', $baseDir]);
-        $output->writeln(" <info>[OK]</info>");
+        $io->writeln(" <info>[OK]</info>");
 
-        $output->write("<info>Setting directory ownership...</info>");
+        $io->write("<info>Setting directory ownership...</info>");
         $this->runProcess(['chown', '-R', "$appName:$appName", $baseDir]);
-        $output->writeln(" <info>[OK]</info>");
+        $io->writeln(" <info>[OK]</info>");
 
-        $output->write("<info>Setting directory permissions...</info>");
+        $io->write("<info>Setting directory permissions...</info>");
         $this->runProcess(['chmod', '-R', '755', $baseDir]);
-        $output->writeln(" <info>[OK]</info>");
+        $io->writeln(" <info>[OK]</info>");
 
         $templatePath = "/etc/php/$phpVersion/fpm/pool.d/www.conf";
         if (!$filesystem->exists($templatePath)) {
@@ -84,28 +86,28 @@ final class CreateAppCommand extends Command
         if (!str_contains($poolConfig, 'listen.group')) { $poolConfig .= "\nlisten.group = www-data"; }
 
         $poolPath = "/etc/php/$phpVersion/fpm/pool.d/$appName.conf";
-        $output->write("<info>Creating PHP-FPM pool $poolPath...</info>");
+        $io->write("<info>Creating PHP-FPM pool $poolPath...</info>");
         $this->runProcess(['tee', $poolPath], $poolConfig);
-        $output->writeln(" <info>[OK]</info>");
+        $io->writeln(" <info>[OK]</info>");
 
         $nginxConfig = $this->generateNginxConfig($appName, $phpVersion, $domain);
         $nginxPath = "/etc/nginx/sites-available/$appName";
-        $output->write("<info>Creating Nginx site configuration $nginxPath...</info>");
+        $io->write("<info>Creating Nginx site configuration $nginxPath...</info>");
         $this->runProcess(['tee', $nginxPath], $nginxConfig);
-        $output->writeln(" <info>[OK]</info>");
+        $io->writeln(" <info>[OK]</info>");
 
-        $this->enableNginxSite($appName, $filesystem, $output);
+        $this->enableNginxSite($appName, $filesystem, $io);
 
-        $output->write("<info>Reloading Nginx...</info>");
+        $io->write("<info>Reloading Nginx...</info>");
         $this->runProcess(['systemctl', 'reload', 'nginx']);
-        $output->writeln(" <info>[OK]</info>");
+        $io->writeln(" <info>[OK]</info>");
 
-        $output->write("<info>Restarting PHP-FPM service...</info>");
+        $io->write("<info>Restarting PHP-FPM service...</info>");
         $this->runProcess(['systemctl', 'restart', "php$phpVersion-fpm"]);
-        $output->writeln(" <info>[OK]</info>");
+        $io->writeln(" <info>[OK]</info>");
 
-        $output->writeln("\n<success>Application setup complete for $domain.</success>");
-        $output->writeln("<comment>Note: Nginx is configured to serve from '$baseDir/current/public'. Your deployment tool is responsible for managing the 'current' symlink.</comment>");
+        $io->success("Application setup complete for $domain.");
+        $io->note("Nginx is configured to serve from '$baseDir/current/public'. Your deployment tool is responsible for managing the 'current' symlink.");
 
         return Command::SUCCESS;
     }
