@@ -105,7 +105,7 @@ final class CreateAppCommand extends Command
         $output->writeln(" <info>[OK]</info>");
 
         $output->writeln("\n<success>Application setup complete for $domain.</success>");
-        $output->writeln("<comment>Note: Your Nginx document root is set to $baseDir/htdocs. Please place your public files there.</comment>");
+        $output->writeln("<comment>Note: Nginx is configured to serve from '$baseDir/current/public'. Your deployment tool is responsible for managing the 'current' symlink.</comment>");
 
         return Command::SUCCESS;
     }
@@ -138,28 +138,44 @@ final class CreateAppCommand extends Command
 
     private function generateNginxConfig(string $appName, string $phpVersion, string $domain): string
     {
-        $webDir = "/var/www/$appName/htdocs";
+        $webDir = "/var/www/$appName/current/public";
         $socketPath = "/run/php/php$phpVersion-fpm-$appName.sock";
 
         return <<<EOT
             server {
-                listen 80;
                 server_name $domain;
                 root $webDir;
-                index index.php index.html;
 
                 location / {
-                    try_files \$uri \$uri/ /index.php?\$query_string;
+                    # try to serve file directly, fallback to index.php
+                    try_files \$uri /index.php\$is_args\$args;
                 }
 
-                location ~ \.php$ {
-                    include snippets/fastcgi-php.conf;
+                location ~ ^/index\.php(/|$) {
                     fastcgi_pass unix:$socketPath;
+                    fastcgi_split_path_info ^(.+\.php)(/.*)$;
+                    include fastcgi_params;
+
+                    # When you are using symlinks to link the document root to the
+                    # current version of your application, you should pass the real
+                    # application path instead of the path to the symlink to PHP
+                    # FPM.
+                    fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;
+                    fastcgi_param DOCUMENT_ROOT \$realpath_root;
+                    # Prevents URIs that include the front controller. This will 404:
+                    # http://example.com/index.php/some-path
+                    # Remove the internal directive to allow URIs like this
+                    internal;
                 }
 
-                location ~ /\.ht {
-                    deny all;
+                # return 404 for all other php files not matching the front controller
+                # this prevents access to other php files you don't want to be accessible.
+                location ~ \.php$ {
+                    return 404;
                 }
+
+                error_log /var/log/nginx/{$appName}_error.log;
+                access_log /var/log/nginx/{$appName}_access.log;
             }
             EOT;
     }
