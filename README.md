@@ -42,6 +42,14 @@ source ~/.bashrc
 # source ~/.zshrc
 ```
 
+## Updating
+
+To update PoolPilot to the latest version, run:
+
+```bash
+composer global update amouhzi/pool-pilot
+```
+
 ## Usage
 
 PoolPilot can be run in two modes: as the `root` user for simplicity, or as a non-root user for enhanced security.
