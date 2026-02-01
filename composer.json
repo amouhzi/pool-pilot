@@ -1,8 +1,11 @@
 {
+    "name": "amouhzi/pool-pilot",
+    "description": "A command-line tool to simplify the management of multiple PHP applications on a single server using PHP-FPM pools.",
     "type": "project",
-    "license": "proprietary",
+    "license": "MIT",
     "minimum-stability": "stable",
     "prefer-stable": true,
+    "bin": ["bin/pool-pilot"],
     "require": {
         "php": ">=8.2",
         "ext-ctype": "*",
@@ -24,11 +27,6 @@
     "autoload": {
         "psr-4": {
             "App\\": "src/"
-        }
-    },
-    "autoload-dev": {
-        "psr-4": {
-            "App\\Tests\\": "tests/"
         }
     },
     "conflict": {

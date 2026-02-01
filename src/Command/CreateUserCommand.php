@@ -18,9 +18,12 @@ use Symfony\Component\Process\Process;
 )]
 final class CreateUserCommand extends Command
 {
+    private readonly bool $isRoot;
+
     public function __construct()
     {
         parent::__construct();
+        $this->isRoot = (function_exists('posix_getuid') && posix_getuid() === 0);
     }
 
     protected function configure(): void
@@ -36,12 +39,9 @@ final class CreateUserCommand extends Command
         $domain = $input->getArgument('domain');
         $filesystem = new Filesystem();
 
-        // Detect current PHP version (e.g., "8.2")
         $phpVersion = PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION;
-
         $output->writeln("<info>Detected PHP version: $phpVersion</info>");
 
-        // 1. Create System User if it doesn't exist
         if ($this->userExists($appName)) {
             $output->writeln("<comment>User '$appName' already exists. Skipping creation.</comment>");
         } else {
@@ -49,14 +49,12 @@ final class CreateUserCommand extends Command
             $this->runProcess(['useradd', '-m', '-s', '/bin/false', $appName], $output);
         }
 
-        // 2. Setup Directories
         $output->writeln("<info>Setting up directories...</info>");
         $webDir = "/var/www/$appName/public";
         $filesystem->mkdir($webDir);
         $this->runProcess(['chown', '-R', "$appName:$appName", "/var/www/$appName"], $output);
         $this->runProcess(['chmod', '-R', '755', "/var/www/$appName"], $output);
 
-        // 3. Generate PHP-FPM Pool Configuration from www.conf template
         $output->writeln("<info>Generating PHP-FPM pool configuration...</info>");
         $templatePath = "/etc/php/$phpVersion/fpm/pool.d/www.conf";
         if (!$filesystem->exists($templatePath)) {
@@ -74,7 +72,6 @@ final class CreateUserCommand extends Command
             '/^group\s*=\s*www-data/m' => "group = $appName",
             '/^listen\s*=.+$/m' => "listen = /run/php/php$phpVersion-fpm-$appName.sock",
         ];
-
         $poolConfig = preg_replace(array_keys($replacements), array_values($replacements), $poolConfig, 1);
 
         if (!str_contains($poolConfig, 'listen.owner')) {
@@ -85,33 +82,35 @@ final class CreateUserCommand extends Command
         }
 
         $poolPath = "/etc/php/$phpVersion/fpm/pool.d/$appName.conf";
+        $this->runProcess(['touch', $poolPath], $output);
+        $this->runProcess(['chown', 'root:root', $poolPath], $output);
         $filesystem->dumpFile($poolPath, $poolConfig);
-        $output->writeln("<info>Pool configuration created at $poolPath using www.conf as a template.</info>");
+        $output->writeln("<info>Pool configuration created at $poolPath</info>");
 
-        // 4. Generate Nginx Server Block
         $output->writeln("<info>Generating Nginx server block...</info>");
         $nginxConfig = $this->generateNginxConfig($appName, $phpVersion, $domain);
         $nginxPath = "/etc/nginx/sites-available/$appName";
         $filesystem->dumpFile($nginxPath, $nginxConfig);
         $output->writeln("<info>Nginx configuration created at $nginxPath</info>");
 
-        // 5. Enable Nginx Site and Reload
         $this->enableNginxSite($appName, $filesystem, $output);
         $this->runProcess(['systemctl', 'reload', 'nginx'], $output);
-        $output->writeln("<info>Nginx site enabled and reloaded.</info>");
+        $output->writeln("<info>Nginx reloaded.</info>");
 
-        // 6. Restart PHP-FPM Service
-        $output->writeln("<info>Restarting PHP-FPM service...</info>");
-        $serviceName = "php$phpVersion-fpm";
-        $this->runProcess(['systemctl', 'restart', $serviceName], $output);
+        $this->runProcess(['systemctl', 'restart', "php$phpVersion-fpm"], $output);
+        $output->writeln("<info>PHP-FPM service restarted.</info>");
 
-        $output->writeln("<success>Application setup complete. Service $serviceName restarted.</success>");
+        $output->writeln("<success>Application setup complete for $domain.</success>");
 
         return Command::SUCCESS;
     }
 
     private function runProcess(array $command, OutputInterface $output): void
     {
+        if (!$this->isRoot) {
+            array_unshift($command, 'sudo');
+        }
+
         $process = new Process($command);
         $process->run();
 
@@ -125,7 +124,6 @@ final class CreateUserCommand extends Command
     {
         $process = new Process(['id', '-u', $username]);
         $process->run();
-
         return $process->isSuccessful();
     }
 
@@ -168,7 +166,7 @@ final class CreateUserCommand extends Command
             return;
         }
 
-        $filesystem->symlink($availableSite, $enabledSite);
+        $this->runProcess(['ln', '-s', $availableSite, $enabledSite], $output);
         $output->writeln("<info>Nginx site enabled for '$appName'.</info>");
     }
 }

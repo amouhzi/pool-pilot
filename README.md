@@ -1,6 +1,6 @@
 # PoolPilot
 
-PoolPilot simplifies infrastructure management for developers running multiple PHP applications on a single Debian/Ubuntu instance. Instead of maintaining a separate LXC container for every project, PoolPilot orchestrates a secure, shared environment using PHP-FPM pools.
+PoolPilot is a command-line tool that simplifies infrastructure management for developers running multiple PHP applications on a single Debian/Ubuntu instance. Instead of maintaining a separate LXC container for every project, PoolPilot orchestrates a secure, shared environment using PHP-FPM pools.
 
 This tool automates the manual labor of system administration by handling:
 
@@ -9,23 +9,50 @@ This tool automates the manual labor of system administration by handling:
 *   **Version Awareness**: Automatically detects the running PHP version (e.g., 8.2, 8.3) to apply the correct paths and service restarts.
 *   **Service Management**: Seamless interaction with systemd to reload configurations instantly.
 
-Designed for solo administrators who need the security of isolation with the simplicity of a monolithic server.
-
 ## Installation
 
+Install PoolPilot globally using Composer:
+
 ```bash
-composer install
+composer global require amouhzi/pool-pilot
 ```
+
+Ensure that your global Composer `bin` directory is in your system's `PATH`.
 
 ## Usage
 
-To run the application, use the `bin/console` script. The following commands are available:
+PoolPilot can be run in two modes: as the `root` user for simplicity, or as a non-root user for enhanced security.
 
-*   `app:create`: Creates a new system user, directory, PHP-FPM pool, and Nginx site with auto-detected PHP version.
+### Simple Mode (As Root)
+
+If you are logged in as `root`, you can run the command directly. The tool will handle all system operations without needing `sudo`.
 
 ```bash
-php bin/console app:create my-app my-app.com
+pool-pilot app:create my-app my-app.com
 ```
+
+### Secure Mode (As a Non-Root User)
+
+This is the recommended approach for production servers and automated deployments (e.g., with `php-deployer`).
+
+1.  **Create a Deployer User**: If you don't have one, create a dedicated user for deployments.
+2.  **Configure Sudo**: The tool will automatically use `sudo` for privileged operations. To allow this without a password, create a sudoers file for your deployer user:
+
+    ```bash
+    sudo visudo -f /etc/sudoers.d/deployer
+    ```
+
+    Add the following lines, which grant password-less access only to the commands PoolPilot needs:
+
+    ```
+    # Allow the deployer user to manage users, services, and files for PoolPilot
+    deployer ALL=(ALL) NOPASSWD: /usr/sbin/useradd, /usr/sbin/groupadd, /bin/systemctl, /bin/chown, /bin/chmod, /usr/bin/ln, /usr/bin/touch
+    ```
+3.  **Run the Command**: As the deployer user, run the command. `sudo` will be invoked automatically where needed.
+
+    ```bash
+    pool-pilot app:create my-app my-app.com
+    ```
 
 ## Contributing
 
