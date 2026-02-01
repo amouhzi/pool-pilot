@@ -69,7 +69,7 @@ This is the recommended approach for production servers and automated deployment
 
     ```
     # Allow the deployer user to manage users, services, and files for PoolPilot
-    deployer ALL=(ALL) NOPASSWD: /usr/sbin/useradd, /usr/sbin/groupadd, /bin/systemctl, /bin/chown, /bin/chmod, /usr/bin/ln, /usr/bin/touch
+    deployer ALL=(ALL) NOPASSWD: /usr/sbin/useradd, /usr/sbin/groupadd, /bin/systemctl, /bin/chown, /bin/chmod, /usr/bin/ln, /usr/bin/mkdir, /usr/bin/tee
     ```
 3.  **Run the Command**: As the deployer user, run the command. `sudo` will be invoked automatically where needed.
 
