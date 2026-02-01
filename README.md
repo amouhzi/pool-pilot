@@ -11,13 +11,36 @@ This tool automates the manual labor of system administration by handling:
 
 ## Installation
 
+### 1. Install PoolPilot
+
 Install PoolPilot globally using Composer:
 
 ```bash
 composer global require amouhzi/pool-pilot
 ```
 
-Ensure that your global Composer `bin` directory is in your system's `PATH`.
+### 2. Update Your System PATH
+
+To run the `pool-pilot` command from anywhere, you must add Composer's global `bin` directory to your system's `PATH`.
+
+First, find the correct directory by running:
+```bash
+composer global config bin-dir --absolute
+```
+
+Now, add the following line to your shell configuration file (e.g., `~/.bashrc`, `~/.zshrc`). Replace `~/.composer/vendor/bin` with the path you found above if it's different.
+
+```bash
+export PATH="$HOME/.composer/vendor/bin:$PATH"
+```
+
+Finally, reload your shell configuration to apply the changes:
+
+```bash
+source ~/.bashrc
+# Or for Zsh:
+# source ~/.zshrc
+```
 
 ## Usage
 
